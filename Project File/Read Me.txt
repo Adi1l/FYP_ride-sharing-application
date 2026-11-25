@@ -1,0 +1,98 @@
+# 🚗 RideShare - Full-Stack Real-Time Ride-Sharing Application
+
+RideShare is a feature-rich, web-based ride-sharing platform built with **Django**, **Bootstrap 5**, and **Leaflet.js**. It enables users to request and create rides, calculate dynamic fares, split costs proportionally across booked seats, track live GPS locations in real time, and communicate instantly through an integrated notification and messaging system.
+
+---
+
+## ✨ Key Features
+
+*   **User Authentication & Roles:** Role-based access for passengers and verified drivers.
+*   **Interactive Mapping & Routing:** Integrated Leaflet.js maps powered by OpenStreetMap and OSRM (Open Source Routing Machine) for automated route polyline rendering and live distance/fare calculations.
+*   **Dynamic Seat Booking & Fare Splitting:** 
+    *   Book multiple seats per ride.
+    *   Automatic seat-reversion and inventory adjustment upon cancellation.
+    *   Fair proportional fare splitting among active passengers based on seats booked.
+*   **Real-Time Driver Tracking:** Live GPS coordinate broadcasting for drivers and smooth marker updates for passengers via asynchronous polling.
+*   **Live Share Links:** Ongoing rides generate shareable links allowing participants to track live coordinates instantly from a dedicated tracker view.
+*   **Interactive Notification & Messaging Hub:** Auto-updating notifications with collapsible detail panels, inline replies, and direct user-to-user modals.
+
+---
+
+## 🛠️ Tech Stack
+
+*   **Backend:** Python, Django 5.x
+*   **Frontend:** HTML5, CSS3, Bootstrap 5, Bootstrap Icons, JavaScript (ES6)
+*   **Mapping & Geolocation:** Leaflet.js, OSRM Routing API, Nominatim Geocoding API
+*   **Database:** SQLite (Development) / MySQL (Production-ready setup)
+
+---
+
+## 🚀 Getting Started Locally
+
+### Prerequisites
+Make sure you have Python installed on your system:
+```bash
+python --version
+
+##Clone the Repository
+git clone [https://github.com/your-username/ride-sharing-app.git](https://github.com/your-username/ride-sharing-app.git)
+cd ride-sharing-app
+
+##Create and Activate a Virtual Environment
+python -m venv venv
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+
+##Install Dependencies
+pip install django
+pip install -r requirements.txt
+
+
+##Apply Database Migrations
+python manage.py makemigrations
+python manage.py migrate
+
+##Create a Superuser (Optional - for Admin Dashboard)
+python manage.py createsuperuser
+
+
+##Run the Development Server
+python manage.py runserver
+Open your browser and navigate to: http://127.0.0.1:8000/
+
+
+
+RideSharingApplication/
+│
+├── projectApp/                # Main Django App
+│   ├── migrations/            # Database migration files
+│   ├── templates/             # HTML Templates (base.html, track_ride.html, etc.)
+│   ├── admin.py               # Django Admin configuration
+│   ├── models.py              # Core data models (Ride, RideBooking, Notification, Profile)
+│   ├── views.py               # View controllers & JSON API endpoints
+│   └── urls.py                # App routing rules
+│
+├── RideSharingApplication/    # Project Configuration
+│   ├── settings.py            # Django settings & configurations
+│   ├── urls.py                # Global URL router
+│   └── wsgi.py / asgi.py      # WSGI/ASGI application entry points
+│
+├── manage.py                  # Django utility script
+└── README.md                  # Project documentation
+
+
+
+##🗺️ How It Works
+Create a Ride: Go to the booking page, select your pickup and drop-off points interactively on the Leaflet map (or auto-detect via your device GPS), specify seats, and review the auto-calculated PKR fare model.
+
+Accept & Drive: Drivers can view requested rides, accept them, and update the ride status to Ongoing when the trip starts.
+
+Live GPS Tracking: Once active, the driver's device streams coordinates to the backend while passengers and shared link viewers track the vehicle moving in real-time along the route.
+
+Messaging & Notifications: Stay updated with instant polling notifications and reply directly from the navigation bar dropdown panel.
+
+
+##📄 License
+This project is open-source and available under the MIT License.

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}RideShare - Your Ride, Your Way{% endblock %}</title>
+    
+    <!-- Bootstrap 5 CSS CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="bg-light d-flex flex-column min-vh-100">
+
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm sticky-top">
+        <div class="container">
+            <!-- Brand Logo -->
+            <a class="navbar-brand fw-bold text-warning" href="{% url 'index' %}">
+                <i class="bi bi-car-front-fill me-2"></i>RideShare
+            </a>
+
+            <!-- Mobile Toggle Button -->
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <!-- Navbar Menu -->
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto align-items-center gap-2">
+
+                    <!-- Notification Dropdown -->
+                    {% if user.is_authenticated %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link position-relative text-white dropdown-toggle hidden-arrow px-2" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-bell-fill fs-5"></i>
+                            <!-- Unread badge counter container -->
+                            <span id="notification-badge-container">
+                                {% if unread_notifications_count %}
+                                    <span class="position-absolute top-25 start-75 translate-middle badge rounded-pill bg-danger" style="font-size: 0.65rem;" id="notification-count-badge">
+                                        {{ unread_notifications_count }}
+                                    </span>
+                                {% endif %}
+                            </span>
+                        </a>
+                        
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 rounded-4 p-3 mt-2" aria-labelledby="notificationDropdown" style="width: 320px; max-height: 400px; overflow-y: auto;">
+                            <li class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                                <h6 class="fw-bold mb-0 text-dark">Notifications</h6>
+                                <a href="{% url 'mark_all_notifications_read' %}" class="small text-decoration-none text-muted">Mark all read</a>
+                            </li>
+
+                            <!-- Dynamic Notification List Container -->
+                            <div id="notification-list-container">
+                                {% if user_notifications %}
+                                    {% for notif in user_notifications %}
+                                    <li onclick="event.stopPropagation();">
+                                        <div class="card border-0 shadow-sm rounded-3 p-2 mb-2 bg-light notification-card">
+                                            <div class="d-flex justify-content-between align-items-center" data-bs-toggle="collapse" data-bs-target="#notifDetails-{{ notif.id }}" style="cursor: pointer;">
+                                                <strong class="small text-dark">{{ notif.title }}</strong>
+                                                <small class="text-muted" style="font-size: 0.7rem;">{{ notif.created_at|date:"M d, H:i" }}</small>
+                                            </div>
+                                            <p class="small text-secondary mb-1 text-truncate" data-bs-toggle="collapse" data-bs-target="#notifDetails-{{ notif.id }}" style="cursor: pointer;">{{ notif.content }}</p>
+                                            
+                                            <!-- Collapsible Details & Reply Section -->
+                                            <div class="collapse mt-1 pt-1 border-top" id="notifDetails-{{ notif.id }}">
+                                                <div class="small text-muted mb-1"><strong>Sender:</strong> {{ notif.sender.username|default:"System" }}</div>
+                                                <div class="small text-dark bg-white p-2 rounded border mb-2">{{ notif.content }}</div>
+                                                
+                                                <!-- Inline Reply Form -->
+                                                {% if notif.sender %}
+                                                   <form method="POST" action="{% if notif.ride %}{% url 'send_user_message' notif.ride.id notif.sender.id %}{% else %}{% url 'send_user_message' notif.sender.id %}{% endif %}" class="mb-2">
+                                                        {% csrf_token %}
+                                                        <div class="input-group input-group-sm">
+                                                            <input type="text" name="message_content" class="form-control" placeholder="Type reply..." required>
+                                                            <button class="btn btn-warning fw-semibold" type="submit">Send</button>
+                                                        </div>
+                                                    </form>
+                                                {% endif %}
+
+                                                <!-- Auto-detected Ride Action Button -->
+                                                {% if notif.ride %}
+                                                    <a href="{% url 'track_ride' notif.ride.id %}" class="btn btn-dark btn-sm w-100 fw-bold rounded-pill py-1" style="font-size: 0.75rem;">
+                                                        <i class="bi bi-geo-alt-fill me-1"></i> View Ride #{{ notif.ride.id }}
+                                                    </a>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </li>
+                                    {% endfor %}
+                                {% else %}
+                                    <li class="text-center py-3 text-muted small">
+                                        No new notifications
+                                    </li>
+                                {% endif %}
+                            </div>
+                        </ul>
+                    </li>
+                    {% endif %}
+
+                    <!-- Profile & Actions Dropdown -->
+                    <li class="nav-item">
+                        {% if user.is_authenticated %}
+                            <div class="dropdown">
+                                <a class="btn dropdown-toggle d-flex align-items-center bg-warning text-dark border-0 rounded-pill px-3 py-1 fw-semibold" href="#" role="button" data-bs-toggle="dropdown">
+                                    {% if user.profile.profile_picture %}
+                                        <img src="{{ user.profile.profile_picture.url }}" alt="Profile" class="rounded-circle me-1" style="width: 28px; height: 28px; object-fit: cover;">
+                                    {% else %}
+                                        <i class="bi bi-person-circle fs-5 me-1"></i>
+                                    {% endif %}
+                                    <span>{{ user.username }}</span>
+                                </a>
+
+                                <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 rounded-4 mt-2">
+                                    <li><a class="dropdown-item small py-2" href="{% url 'profile' %}"><i class="bi bi-person me-2"></i>My Profile</a></li>
+                                    <li><a class="dropdown-item small py-2" href="{% url 'dashboard' %}"><i class="bi bi-speedometer2 me-2"></i>Dashboard</a></li>
+                                    <li><a class="dropdown-item small py-2 text-primary" href="{% url 'driver_register' %}"><i class="bi bi-steering-wheel me-2"></i>Drive With Us</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <!-- Live Location Nav Link -->
+                                    <li class="nav-item">
+                                        <a class="nav-link text-white px-2" href="{% url 'live_location_page' %}">
+                                            <i class="bi bi-map-fill me-1 text-warning"></i> Live Location
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <form method="post" action="{% url 'logout' %}" class="d-inline">
+                                            {% csrf_token %}
+                                            <button type="submit" class="dropdown-item small py-2 text-danger"><i class="bi bi-box-arrow-right me-2"></i>Logout</button>
+                                        </form>
+                                    </li>
+                                </ul>
+                            </div>
+                        {% else %}
+                            <div class="d-flex align-items-center gap-2">
+                                <a href="{% url 'driver_register' %}" class="btn btn-outline-light btn-sm fw-semibold rounded-pill px-3">Drive With Us</a>
+                                <a href="{% url 'login' %}" class="btn btn-warning btn-sm fw-semibold rounded-pill px-3">
+                                    <i class="bi bi-box-arrow-in-right me-1"></i> Login
+                                </a>
+                            </div>
+                        {% endif %}
+                    </li>
+
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow-1">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white text-center py-4 mt-auto">
+        <div class="container">
+            <p class="mb-0 text-muted small">&copy; 2026 RideShare. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Auto-updating Notifications Script -->
+
+    {% if user.is_authenticated %}
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        function updateNotifications() {
+            // 1. Remember which notification cards are currently expanded
+            const openNotifIds = [];
+            document.querySelectorAll('#notification-list-container .collapse.show').forEach(el => {
+                openNotifIds.push(el.id);
+            });
+
+            fetch("{% url 'fetch_notifications_api' %}")
+                .then(response => response.json())
+                .then(data => {
+                    // 2. Update Badge Count
+                    const badgeContainer = document.getElementById('notification-badge-container');
+                    if (data.unread_count > 0) {
+                        badgeContainer.innerHTML = `<span class="position-absolute top-25 start-75 translate-middle badge rounded-pill bg-danger" style="font-size: 0.65rem;" id="notification-count-badge">${data.unread_count}</span>`;
+                    } else {
+                        badgeContainer.innerHTML = '';
+                    }
+
+                    // 3. Rebuild Notification List
+                    const listContainer = document.getElementById('notification-list-container');
+                    if (data.notifications.length > 0) {
+                        let html = '';
+                        data.notifications.forEach(notif => {
+                            let rideBtnHtml = '';
+                            if (notif.ride_id) {
+                                rideBtnHtml = `
+                                    <a href="/track-ride/${notif.ride_id}/" class="btn btn-dark btn-sm w-100 fw-bold rounded-pill py-1 mt-1" style="font-size: 0.75rem;">
+                                        <i class="bi bi-geo-alt-fill me-1"></i> View Ride #${notif.ride_id}
+                                    </a>
+                                `;
+                            }
+
+                            let replyFormHtml = '';
+                            if (notif.sender_id) {
+                                let replyUrl = notif.ride_id ? `/ride/${notif.ride_id}/send-message/${notif.sender_id}/` : `/send-message/${notif.sender_id}/`;
+                                replyFormHtml = `
+                                    <form method="POST" action="${replyUrl}" class="mb-2">
+                                        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                                        <div class="input-group input-group-sm">
+                                            <input type="text" name="message_content" class="form-control" placeholder="Type reply..." required>
+                                            <button class="btn btn-warning fw-semibold" type="submit">Send</button>
+                                        </div>
+                                    </form>
+                                `;
+                            }
+
+                            // Keep section open if user was viewing/replying
+                            const isCollapsedShow = openNotifIds.includes(`notifDetails-${notif.id}`) ? 'show' : '';
+
+                            html += `
+                                <li onclick="event.stopPropagation();">
+                                    <div class="card border-0 shadow-sm rounded-3 p-2 mb-2 bg-light notification-card">
+                                        <div class="d-flex justify-content-between align-items-center" data-bs-toggle="collapse" data-bs-target="#notifDetails-${notif.id}" style="cursor: pointer;">
+                                            <strong class="small text-dark">${notif.title}</strong>
+                                            <small class="text-muted" style="font-size: 0.7rem;">${notif.created_at}</small>
+                                        </div>
+                                        <p class="small text-secondary mb-1 text-truncate" data-bs-toggle="collapse" data-bs-target="#notifDetails-${notif.id}" style="cursor: pointer;">${notif.content}</p>
+                                        
+                                        <div class="collapse mt-1 pt-1 border-top ${isCollapsedShow}" id="notifDetails-${notif.id}">
+                                            <div class="small text-muted mb-1"><strong>Sender:</strong> ${notif.sender_username}</div>
+                                            <div class="small text-dark bg-white p-2 rounded border mb-2">${notif.content}</div>
+                                            ${replyFormHtml}
+                                            ${rideBtnHtml}
+                                        </div>
+                                    </div>
+                                </li>
+                            `;
+                        });
+                        listContainer.innerHTML = html;
+                    } else {
+                        listContainer.innerHTML = `<li class="text-center py-3 text-muted small">No new notifications</li>`;
+                    }
+                })
+                .catch(err => console.error("Error updating notifications:", err));
+        }
+
+        // Poll every 5 seconds
+        setInterval(updateNotifications, 5000);
+    });
+</script>
+{% endif %}
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

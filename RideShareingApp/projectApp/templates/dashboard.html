@@ -1,0 +1,132 @@
+{% extends 'index.html' %}
+
+{% block title %}Dashboard - RideShare{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 px-4">
+
+    <!-- AR: Top Counter & Welcome Header Bar -->
+    <div class="row mb-4 align-items-center">
+        <div class="col-md-6">
+            <h3 class="fw-bold text-dark mb-1">Welcome, {{ user.get_full_name|default:user.username }}!</h3>
+            <p class="text-muted small mb-0">Manage your trips, active rides, and history below.</p>
+        </div>
+        <div class="col-md-6 text-md-end mt-3 mt-md-0">
+            <span class="badge bg-dark px-3 py-2 rounded-pill text-uppercase">Role: {{ profile.role|default:"Passenger" }}</span>
+        </div>
+    </div>
+
+    <!-- AR: Metrics Counter Bar -->
+    <div class="row text-center mb-4">
+        <div class="col-xl-2 col-md-4 col-6 mb-3">
+            <div class="card shadow-sm border-0 rounded-4 p-3 bg-white">
+                <h6 class="text-muted small mb-1">Total Rides</h6>
+                <h4 class="fw-bold text-dark mb-0">{{ total_rides }}</h4>
+            </div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6 mb-3">
+            <div class="card shadow-sm border-0 rounded-4 p-3 bg-white">
+                <h6 class="text-success small mb-1">Completed</h6>
+                <h4 class="fw-bold text-success mb-0">{{ completed_rides }}</h4>
+            </div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6 mb-3">
+            <div class="card shadow-sm border-0 rounded-4 p-3 bg-white">
+                <h6 class="text-danger small mb-1">Canceled</h6>
+                <h4 class="fw-bold text-danger mb-0">{{ canceled_rides }}</h4>
+            </div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6 mb-3">
+            <div class="card shadow-sm border-0 rounded-4 p-3 bg-white">
+                <h6 class="text-warning small mb-1">Ongoing</h6>
+                <h4 class="fw-bold text-warning mb-0">{{ ongoing_rides }}</h4>
+            </div>
+        </div>
+        <div class="col-xl-2 col-md-4 col-6 mb-3">
+            <div class="card shadow-sm border-0 rounded-4 p-3 bg-white">
+                <h6 class="text-primary small mb-1">User Rating</h6>
+                <h4 class="fw-bold text-primary mb-0"><i class="bi bi-star-fill text-warning fs-6"></i> {{ user_rating }}</h4>
+            </div>
+        </div>
+
+        <div class="col-xl-2 col-md-4 col-6 mb-3">
+            <div class="card shadow-sm border-0 rounded-4 p-3 bg-white">
+                <h6 class="text-info small mb-1">Driver Rating</h6>
+                <h4 class="fw-bold text-info mb-0"><i class="bi bi-star-fill text-warning fs-6"></i> {{ driver_rating }}</h4>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Main Content Grid Layout (OG/OGR in Middle-Left, N on Right) -->
+    <div class="row">
+        
+        <!-- OGR & RH Section (Middle & Left Content Blocks) -->
+        <div class="col-lg-9 mb-4">
+            
+            <!-- OGR: Ongoing & Booked Rides Section (Top priority in middle) -->
+            <div class="card shadow-sm border-0 rounded-4 p-4 bg-white mb-4">
+                <h5 class="fw-bold text-dark mb-3"><i class="bi bi-car-front-fill me-2 text-warning"></i>Ongoing & Booked Rides</h5>
+                
+               <div class="list-group list-group-flush">
+    {% for ride in active_rides %}
+        <div class="list-group-item px-0 py-3 border-bottom d-flex justify-content-between align-items-center">
+            <!-- Left Side: Ride Details -->
+            <div class="pe-3">
+                <span class="badge {% if ride.status == 'accepted' %}bg-success{% else %}bg-warning{% endif %} text-dark mb-1 text-uppercase">{{ ride.status }}</span>
+                <p class="mb-1 small text-dark fw-semibold">To: {{ ride.dropoff_address }}</p>
+                <p class="text-muted small mb-0">Pickup: {{ ride.pickup_address }}</p>
+            </div>
+            
+            <!-- Right Side: Vertically Stacked Price & Buttons -->
+            <div class="d-flex flex-column align-items-end text-end" style="min-width: 120px;">
+                <span class="fw-bold text-success mb-2 fs-6">Rs. {{ ride.fare }}</span>
+                <a href="{% url 'track_ride' ride.id %}" class="btn btn-dark btn-sm rounded-pill px-3 mb-2 w-100">Track Ride</a>
+                <a href="{% url 'cancel_ride' ride.id %}" class="btn btn-outline-danger btn-sm rounded-pill px-3 w-100" onclick="return confirm('Are you sure you want to cancel this ride?');">Cancel</a>
+            </div>
+        </div>
+    {% endfor %}
+</div>
+</div>
+            <!-- RH: Ride History Section (Completed & Canceled history) -->
+            <div class="card shadow-sm border-0 rounded-4 p-4 bg-white">
+                <h5 class="fw-bold text-dark mb-3"><i class="bi bi-clock-history me-2 text-secondary"></i>Ride History (Completed & Canceled)</h5>
+                
+                {% if ride_history %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle small mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Dropoff</th>
+                                    <th>Fare</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ride in ride_history %}
+                                    <tr>
+                                        <td>
+                                            <span class="badge {% if ride.status == 'completed' %}bg-success{% else %}bg-danger{% endif %} text-uppercase">
+                                                {{ ride.status }}
+                                            </span>
+                                        </td>
+                                        <td>{{ ride.dropoff_address|truncatechars:45 }}</td>
+                                        <td class="fw-semibold">Rs. {{ ride.fare }}</td>
+                                        <td><a href="{% url 'track_ride' ride.id %}" class="btn btn-outline-dark btn-sm">Details</a></td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted small mb-0">No past ride history available yet.</p>
+                {% endif %}
+            </div>
+
+        </div>
+
+    
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,147 @@
+{% extends 'index.html' %}
+
+{% block title %}Manage Profile - RideShare{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <!-- Sidebar / Profile Summary Card -->
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm border-0 rounded-4 p-4 text-center bg-white">
+                <div class="mb-3">
+                    {% if profile.profile_picture %}
+                    <img src="{{ profile.profile_picture.url }}" alt="Profile Picture" class="rounded-circle img-thumbnail shadow-sm" style="width: 130px; height: 130px; object-fit: cover;">
+                    {% else %}
+                        <div class="bg-secondary text-white rounded-circle d-inline-flex align-items-center justify-content-center shadow-sm" style="width: 130px; height: 130px; font-size: 3rem;">
+                            <i class="bi bi-person"></i>
+                        </div>
+                    {% endif %}
+                </div>
+                <h4 class="fw-bold text-dark mb-1">{{ user.get_full_name|default:user.username }}</h4>
+                <p class="text-muted small mb-3">@{{ user.username }}</p>
+                <p class="text-secondary small">{{ user.userprofile.bio|default:"No bio added yet. Tell people about yourself!" }}</p>
+                <hr>
+                <div class="text-start small text-muted">
+                    <p class="mb-1"><strong>Email:</strong> {{ user.email|default:"Not provided" }}</p>
+                    <p class="mb-1"><strong>Phone:</strong> {{ profile.phone_number|default:"Not provided" }}</p>
+                    <p class="mb-0"><strong>Joined:</strong> {{ user.date_joined|date:"F d, Y" }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area: Tabs or Sections for Operations -->
+        <div class="col-lg-8">
+            <!-- Messages -->
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show small" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+
+            <!-- Section 1: Update Profile Info & Picture -->
+            <div class="card shadow-sm border-0 rounded-4 p-4 bg-white mb-4">
+                <h5 class="fw-bold text-dark mb-3"><i class="bi bi-pencil-square me-2 text-warning"></i>Edit Profile Information</h5>
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label small fw-semibold text-secondary">Username</label>
+                            {{ user_form.username }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label small fw-semibold text-secondary">Email Address</label>
+                            {{ user_form.email }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label small fw-semibold text-secondary">First Name</label>
+                            {{ user_form.first_name }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label small fw-semibold text-secondary">Last Name</label>
+                            {{ user_form.last_name }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label small fw-semibold text-secondary">Phone Number</label>
+                            {{ profile_form.phone_number }}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label small fw-semibold text-secondary">Profile Picture</label>
+                            {{ profile_form.profile_picture }}
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="form-label small fw-semibold text-secondary">Bio</label>
+                            {{ profile_form.bio }}
+                        </div>
+                    </div>
+                    <button type="submit" name="update_profile" class="btn btn-warning fw-semibold px-4">Save Changes</button>
+                </form>
+            </div>
+
+            <!-- Section 2: Change Password -->
+            <div class="card shadow-sm border-0 rounded-4 p-4 bg-white mb-4">
+                <h5 class="fw-bold text-dark mb-3"><i class="bi bi-shield-lock me-2 text-warning"></i>Change Password</h5>
+                <form method="post">
+                    {% csrf_token %}
+                    {% for field in password_form %}
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-secondary">{{ field.label }}</label>
+                            {{ field }}
+                            {% if field.help_text %}
+                                <div class="form-text text-muted" style="font-size: 0.75rem;">{{ field.help_text|safe }}</div>
+                            {% endif %}
+                            {% for error in field.errors %}
+                                <div class="text-danger small mt-1">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    {% endfor %}
+                    <button type="submit" name="change_password" class="btn btn-dark fw-semibold px-4">Update Password</button>
+                </form>
+            </div>
+
+            <!-- Section 3: Danger Zone (Delete Account) -->
+            <div class="card shadow-sm border-0 rounded-4 p-4 bg-white border-danger">
+                <h5 class="fw-bold text-danger mb-2"><i class="bi bi-exclamation-triangle-fill me-2"></i>Danger Zone</h5>
+                <p class="text-muted small mb-3">Once you delete your account, there is no going back. Please be certain.</p>
+                <button type="button" class="btn btn-outline-danger fw-semibold btn-sm px-3" data-bs-toggle="modal" data-bs-target="#deleteModal">Delete Account</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow">
+            <div class="modal-header border-0">
+                <h5 class="modal-title fw-bold text-danger" id="deleteModalLabel">Confirm Account Deletion</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-secondary small">Are you sure you want to delete your account? All your ride history, profile information, and credentials will be permanently erased from RideShare.</p>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <form method="post">
+                    {% csrf_token %}
+                    <button type="submit" name="delete_account" class="btn btn-danger btn-sm px-3">Yes, Delete My Account</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Automatically apply Bootstrap styling to rendered form inputs
+    document.addEventListener("DOMContentLoaded", function() {
+        const inputs = document.querySelectorAll("input, select, textarea");
+        inputs.forEach(input => {
+            if (!input.classList.contains('form-control') && !input.classList.contains('form-check-input')) {
+                input.classList.add("form-control", "bg-light");
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,224 @@
+{% extends 'base.html' %}
+{% block title %}Home - RideShare{% endblock %}
+
+{% block extra_css %}
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    .ride-map { height: 180px; width: 100%; border-radius: 0.5rem; z-index: 1; }
+    .custom-marker-pickup { background-color: #0d6efd; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,0.4); }
+    .custom-marker-dropoff { background-color: #dc3545; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,0.4); }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero Carousel Section -->
+<div id="heroCarousel" class="carousel slide shadow-sm mb-5" data-bs-ride="carousel">
+    <div class="carousel-indicators">
+        <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="0" class="active"></button>
+        <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="1"></button>
+        <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="2"></button>
+    </div>
+    <div class="carousel-inner rounded-4 overflow-hidden" style="max-height: 380px;">
+        <div class="carousel-item active bg-dark text-white p-5 text-center" style="background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?auto=format&fit=crop&w=1200&q=80') center/cover;">
+            <div class="container py-4">
+                <h1 class="fw-bold display-5 text-warning">Your Journey Begins Here</h1>
+                <p class="lead text-light mb-4">Connect with trusted drivers instantly. Login or create an account to start riding or driving today.</p>
+                {% if not user.is_authenticated %}
+                    <a href="{% url 'login' %}" class="btn btn-warning fw-semibold px-4 py-2 me-2">Login Now</a>
+                    <a href="{% url 'signup' %}" class="btn btn-outline-light fw-semibold px-4 py-2">Sign Up</a>
+                {% else %}
+                    <a href="{% url 'book_ride' %}" class="btn btn-warning fw-semibold px-4 py-2">Book a Ride Now</a>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="carousel-item bg-dark text-white p-5 text-center" style="background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://images.unsplash.com/photo-1506015391300-4802dc74de2e?auto=format&fit=crop&w=1200&q=80') center/cover;">
+            <div class="container py-4">
+                <h1 class="fw-bold display-5 text-warning">Why Choose RideShare?</h1>
+                <p class="lead text-light mb-3">Verified drivers with strict checks, real-time live map tracking, and affordable local fares tailored for you.</p>
+                <span class="badge bg-success fs-6 px-3 py-2">100% Secure & Reliable</span>
+            </div>
+        </div>
+
+        <div class="carousel-item bg-dark text-white p-5 text-center" style="background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('https://images.unsplash.com/photo-1519003722824-194d4455a60c?auto=format&fit=crop&w=1200&q=80') center/cover;">
+            <div class="container py-4">
+                <h1 class="fw-bold display-5 text-warning">Travel Across the City Safely</h1>
+                <p class="lead text-light mb-4">Find scheduled rides, set custom location coordinates effortlessly, and arrive on time.</p>
+                <a href="#searchSection" class="btn btn-warning fw-semibold px-4 py-2">Find a Ride Now</a>
+            </div>
+        </div>
+    </div>
+    <button class="carousel-control-prev" type="button" data-bs-target="#heroCarousel" data-bs-slide="prev"><span class="carousel-control-prev-icon"></span></button>
+    <button class="carousel-control-next" type="button" data-bs-target="#heroCarousel" data-bs-slide="next"><span class="carousel-control-next-icon"></span></button>
+</div>
+
+<!-- Search & Status Filter Section -->
+<div class="container mb-5" id="searchSection">
+    <div class="card shadow-sm border-0 rounded-4 p-4 bg-white">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="fw-bold m-0">Find Your Ride</h4>
+            {% if user.is_authenticated %}
+                <a href="{% url 'book_ride' %}" class="btn btn-dark fw-semibold btn-sm">+ Create / Request Ride</a>
+            {% else %}
+                <a href="{% url 'login' %}" class="btn btn-warning fw-semibold btn-sm">Login to Create Ride</a>
+            {% endif %}
+        </div>
+
+        <form method="get" action="{% url 'index' %}#searchSection" id="filterForm">
+            <input type="hidden" name="status" id="statusInput" value="{{ request.GET.status|default:'' }}">
+
+            <!-- Status Pills -->
+            <div class="mb-3">
+                <label class="form-label small fw-semibold text-secondary d-block">Filter by Ride Status</label>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" onclick="selectStatus('')" class="btn btn-sm rounded-pill fw-semibold {% if not request.GET.status %}btn-dark{% else %}btn-outline-dark{% endif %}">All Rides</button>
+                    <button type="button" onclick="selectStatus('requested')" class="btn btn-sm rounded-pill fw-semibold {% if request.GET.status == 'requested' %}btn-warning text-dark{% else %}btn-outline-warning text-dark{% endif %}">Requested</button>
+                    <button type="button" onclick="selectStatus('accepted')" class="btn btn-sm rounded-pill fw-semibold {% if request.GET.status == 'accepted' %}btn-primary{% else %}btn-outline-primary{% endif %}">Accepted</button>
+                    <button type="button" onclick="selectStatus('ongoing')" class="btn btn-sm rounded-pill fw-semibold {% if request.GET.status == 'ongoing' %}btn-info text-white{% else %}btn-outline-info{% endif %}">Ongoing</button>
+                    <button type="button" onclick="selectStatus('completed')" class="btn btn-sm rounded-pill fw-semibold {% if request.GET.status == 'completed' %}btn-success{% else %}btn-outline-success{% endif %}">Completed</button>
+                    <button type="button" onclick="selectStatus('canceled')" class="btn btn-sm rounded-pill fw-semibold {% if request.GET.status == 'canceled' %}btn-danger{% else %}btn-outline-danger{% endif %}">Canceled</button>
+                </div>
+            </div>
+
+            <!-- Search Inputs -->
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <label class="form-label small fw-semibold text-secondary">Destination / Dropoff Location</label>
+                    <input type="text" name="destination" class="form-control" placeholder="Search destination address..." value="{{ request.GET.destination }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-semibold text-secondary">Max Budget ($)</label>
+                    <input type="number" name="budget" class="form-control" placeholder="e.g. 500" value="{{ request.GET.budget }}">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-warning w-100 fw-semibold">Apply Filters</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Ride Cards Section -->
+<div class="container mb-5">
+    <h4 class="fw-bold mb-4">Available Matching Rides</h4>
+    <div class="row">
+        {% if rides %}
+            {% for ride in rides %}
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm border-0 rounded-4 h-100 overflow-hidden bg-white p-3">
+                        <!-- Card Map Container -->
+                        <div id="map-{{ ride.id }}" class="ride-map mb-3 border"></div>
+                        
+                        <div class="card-body d-flex flex-column p-0">
+                            <!-- Status Badge & User Info -->
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="badge bg-warning text-dark fw-bold">{{ ride.get_status_display|default:ride.status|title }}</span>
+                                <small class="text-muted">By: {{ ride.passenger.username }}</small>
+                            </div>
+
+                            <!-- Date & Time of Ride Creation -->
+                            <div class="mb-2">
+                                <small class="text-muted" style="font-size: 0.8rem;">
+                                    <i class="bi bi-clock me-1"></i>{{ ride.created_at|date:"M d, Y - H:i" }}
+                                </small>
+                            </div>
+
+                            <!-- Driver Info (If accepted) -->
+                            {% if ride.driver %}
+                                <div class="p-2 mb-2 bg-light rounded-3 border d-flex align-items-center justify-content-between">
+                                    <div>
+                                        <small class="text-muted d-block" style="font-size: 0.75rem;">Driver Assigned</small>
+                                        <strong class="text-dark small"><i class="bi bi-person-badge me-1"></i>{{ ride.driver.get_full_name|default:ride.driver.username }}</strong>
+                                    </div>
+                                    {% if ride.driver.profile.phone_number %}
+                                        <a href="tel:{{ ride.driver.profile.phone_number }}" class="btn btn-outline-success btn-sm py-0 px-2 rounded-pill small">
+                                            <i class="bi bi-telephone-fill"></i> Call
+                                        </a>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+
+                            <!-- Remaining Seats Badge -->
+                            <div class="mb-2">
+                                <span class="badge bg-info text-dark fw-semibold">
+                                    <i class="bi bi-people-fill me-1"></i>
+                                    {{ ride.remaining_seats|default:ride.total_seats }} Seats Remaining
+                                </span>
+                            </div>
+
+                            <!-- Pickup & Dropoff Addresses -->
+                            <p class="small text-secondary mb-1"><strong>Pickup:</strong> {{ ride.pickup_address }}</p>
+                            <p class="small text-secondary mb-3"><strong>Dropoff:</strong> {{ ride.dropoff_address }}</p>
+                            
+                            <!-- Action Button -->
+                            <div class="mt-auto">
+                                <a href="{% url 'track_ride' ride.id %}" class="btn btn-dark btn-sm w-100 fw-semibold rounded-pill py-2">View Ride Details</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="col-12">
+                <div class="alert alert-light text-center border-0 shadow-sm rounded-4 p-5">
+                    <p class="text-muted mb-0">No matching rides found based on your filter criteria.</p>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    function selectStatus(statusVal) {
+        document.getElementById('statusInput').value = statusVal;
+        document.getElementById('filterForm').submit();
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        {% for ride in rides %}
+        (function() {
+            const rideId = "{{ ride.id }}";
+            const pLat = {{ ride.pickup_lat|default:"30.1575" }};
+            const pLng = {{ ride.pickup_lng|default:"71.5249" }};
+            const dLat = {{ ride.dropoff_lat|default:"30.1650" }};
+            const dLng = {{ ride.dropoff_lng|default:"71.4934" }};
+            const mapElem = document.getElementById('map-' + rideId);
+
+            if (!mapElem) return;
+
+            const map = L.map('map-' + rideId, {
+                zoomControl: false,
+                attributionControl: false
+            }).setView([pLat, pLng], 12);
+
+            // OpenStreetMap France Tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', {
+                maxZoom: 19
+            }).addTo(map);
+
+            const pickupIcon = L.divIcon({ className: 'custom-marker-pickup', iconSize: [12, 12], iconAnchor: [6, 6] });
+            const dropoffIcon = L.divIcon({ className: 'custom-marker-dropoff', iconSize: [12, 12], iconAnchor: [6, 6] });
+
+            L.marker([pLat, pLng], { icon: pickupIcon }).addTo(map);
+            L.marker([dLat, dLng], { icon: dropoffIcon }).addTo(map);
+
+            // OSRM Driving Route Line
+            fetch(`https://router.project-osrm.org/route/v1/driving/${pLng},${pLat};${dLng},${dLat}?overview=full&geometries=geojson`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.routes && data.routes.length > 0) {
+                        const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+                        const polyline = L.polyline(coords, { color: '#0275d8', weight: 4, opacity: 0.8 }).addTo(map);
+                        map.fitBounds(polyline.getBounds(), { padding: [20, 20] });
+                    }
+                }).catch(err => console.error("Route load error:", err));
+        })();
+        {% endfor %}
+    });
+</script>
+{% endblock %}

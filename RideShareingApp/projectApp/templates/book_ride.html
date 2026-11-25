@@ -1,0 +1,273 @@
+{% extends 'base.html' %}
+{% block title %}Book a Ride - RideShare{% endblock %}
+
+{% block extra_css %}
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    #bookingMap { height: 420px; width: 100%; border-radius: 0.5rem; }
+    
+    /* Marker Styling */
+    .custom-marker-pickup {
+        background-color: #0d6efd !important;
+        border: 3px solid white;
+        border-radius: 50%;
+        box-shadow: 0 0 8px rgba(0,0,0,0.5);
+    }
+    .custom-marker-dropoff {
+        background-color: #dc3545 !important;
+        border: 3px solid white;
+        border-radius: 50%;
+        box-shadow: 0 0 8px rgba(0,0,0,0.5);
+    }
+    .custom-marker-user {
+        background-color: #198754 !important;
+        border: 3px solid white;
+        border-radius: 50%;
+        box-shadow: 0 0 8px rgba(0,0,0,0.5);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <!-- Input Form Column -->
+        <div class="col-md-5 mb-4">
+            <div class="card shadow-sm border-0 rounded-4 p-4 bg-white">
+                <h4 class="fw-bold mb-3">Create & Book a Ride</h4>
+                
+                <form method="POST" id="rideForm">
+                    {% csrf_token %}
+
+                    <!-- Hidden Coordinate Fields -->
+                    <input type="hidden" id="pickupLat" name="pickup_lat">
+                    <input type="hidden" id="pickupLng" name="pickup_lng">
+                    <input type="hidden" id="dropoffLat" name="dropoff_lat">
+                    <input type="hidden" id="dropoffLng" name="dropoff_lng">
+
+                    <!-- Pickup Location Input -->
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Pickup Location</label>
+                        <div class="input-group">
+                            <input type="text" id="pickupInput" name="pickup_address" class="form-control" placeholder="Type or click map..." required>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="selectPickupBtn">Set Pickup</button>
+                        </div>
+                    </div>
+
+                    <!-- Dropoff Location Input -->
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Drop-off Location</label>
+                        <div class="input-group">
+                            <input type="text" id="dropoffInput" name="dropoff_address" class="form-control" placeholder="Type or click map..." required>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="selectDropoffBtn">Set Dropoff</button>
+                        </div>
+                    </div>
+
+                    <!-- Ride Specifications -->
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label small fw-semibold">Total Seats</label>
+                            <input type="number" name="total_seats" class="form-control" min="1" max="6" value="4" required>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="form-label small fw-semibold">Estimated Fare (Rs)</label>
+                            <input type="number" step="0.01" id="fareInput" name="fare" class="form-control" placeholder="Auto calculated..." required>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-warning w-100 fw-bold text-dark rounded-pill">Confirm Ride Request</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Interactive Map Column -->
+        <div class="col-md-7 mb-4">
+            <div class="card shadow-sm border-0 rounded-4 p-4 bg-white h-100">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="fw-bold mb-0">Select Locations on Map</h5>
+                    <span id="activeSelectionMode" class="badge bg-primary">Click Mode: Pickup</span>
+                </div>
+                <div id="bookingMap"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    let map, pickupMarker = null, dropoffMarker = null, userLocationMarker = null, routePolyline = null;
+    let pickupCoords = null, dropoffCoords = null;
+    let currentClickMode = 'pickup';
+
+    document.addEventListener("DOMContentLoaded", function () {
+        map = L.map('bookingMap').setView([30.1575, 71.5249], 13);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', {
+            maxZoom: 20,
+            attribution: '&copy; OpenStreetMap France | OpenStreetMap contributors'
+        }).addTo(map);
+
+        // User Current Location Icon Setup
+        const userIcon = L.divIcon({
+            className: 'custom-marker-user',
+            iconSize: [18, 18],
+            iconAnchor: [9, 9]
+        });
+
+        // 📍 Center map and show user location reference marker without overriding inputs
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function (position) {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    
+                    map.setView([lat, lng], 14);
+
+                    if (userLocationMarker) map.removeLayer(userLocationMarker);
+                    userLocationMarker = L.marker([lat, lng], { icon: userIcon })
+                        .addTo(map)
+                        .bindPopup("<b>You Are Here</b>");
+                },
+                function (error) {
+                    console.warn("Geolocation permission denied or unavailable:", error.message);
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
+        // Map Click Listener
+        map.on('click', async function (e) {
+            const lat = e.latlng.lat;
+            const lng = e.latlng.lng;
+
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+                const data = await res.json();
+                const address = data.display_name || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+
+                if (currentClickMode === 'pickup') {
+                    document.getElementById('pickupInput').value = address;
+                    setPickupLocation([lat, lng]);
+                    setSelectionMode('dropoff');
+                } else {
+                    document.getElementById('dropoffInput').value = address;
+                    setDropoffLocation([lat, lng]);
+                }
+            } catch (err) {
+                console.error("Geocoding error", err);
+            }
+        });
+
+        document.getElementById('selectPickupBtn').addEventListener('click', () => setSelectionMode('pickup'));
+        document.getElementById('selectDropoffBtn').addEventListener('click', () => setSelectionMode('dropoff'));
+
+        document.getElementById('pickupInput').addEventListener('change', function() {
+            geocodeAddress(this.value, 'pickup');
+        });
+
+        document.getElementById('dropoffInput').addEventListener('change', function() {
+            geocodeAddress(this.value, 'dropoff');
+        });
+    });
+
+    function setSelectionMode(mode) {
+        currentClickMode = mode;
+        const badge = document.getElementById('activeSelectionMode');
+        if (mode === 'pickup') {
+            badge.className = 'badge bg-primary';
+            badge.innerText = 'Click Mode: Pickup';
+        } else {
+            badge.className = 'badge bg-success';
+            badge.innerText = 'Click Mode: Drop-off';
+        }
+    }
+
+    async function geocodeAddress(address, type) {
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`);
+            const data = await res.json();
+            if (data && data.length > 0) {
+                const lat = parseFloat(data[0].lat);
+                const lon = parseFloat(data[0].lon);
+                if (type === 'pickup') {
+                    setPickupLocation([lat, lon]);
+                } else {
+                    setDropoffLocation([lat, lon]);
+                }
+            }
+        } catch (err) {
+            console.error("Geocode error", err);
+        }
+    }
+
+    function setPickupLocation(latLng) {
+        pickupCoords = latLng;
+        document.getElementById('pickupLat').value = latLng[0];
+        document.getElementById('pickupLng').value = latLng[1];
+
+        if (pickupMarker) map.removeLayer(pickupMarker);
+        
+        const pickupIcon = L.divIcon({
+            className: 'custom-marker-pickup',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+        });
+
+        pickupMarker = L.marker(latLng, { icon: pickupIcon }).addTo(map)
+            .bindPopup("<b>Pickup Location (A)</b>").openPopup();
+
+        calculateAndDisplayRoute();
+    }
+
+    function setDropoffLocation(latLng) {
+        dropoffCoords = latLng;
+        document.getElementById('dropoffLat').value = latLng[0];
+        document.getElementById('dropoffLng').value = latLng[1];
+
+        if (dropoffMarker) map.removeLayer(dropoffMarker);
+        
+        const dropoffIcon = L.divIcon({
+            className: 'custom-marker-dropoff',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+        });
+
+        dropoffMarker = L.marker(latLng, { icon: dropoffIcon }).addTo(map)
+            .bindPopup("<b>Drop-off Location (B)</b>").openPopup();
+
+        calculateAndDisplayRoute();
+    }
+
+    async function calculateAndDisplayRoute() {
+        if (!pickupCoords || !dropoffCoords) return;
+
+        try {
+            const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${pickupCoords[1]},${pickupCoords[0]};${dropoffCoords[1]},${dropoffCoords[0]}?overview=full&geometries=geojson`);
+            const data = await res.json();
+
+            if (data.routes && data.routes.length > 0) {
+                const route = data.routes[0];
+                const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+
+                if (routePolyline) map.removeLayer(routePolyline);
+
+                routePolyline = L.polyline(coords, { color: '#0275d8', weight: 5, opacity: 0.8 }).addTo(map);
+                map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
+
+                const distanceKm = route.distance / 1000;
+                const baseFare = 150.00;
+                const perKmRate = 75.00;
+                const estimatedFare = (baseFare + (distanceKm * perKmRate)).toFixed(2);
+                
+                document.getElementById('fareInput').value = estimatedFare;
+            }
+        } catch (err) {
+            console.error("OSRM Routing error", err);
+        }
+    }
+</script>
+{% endblock %}

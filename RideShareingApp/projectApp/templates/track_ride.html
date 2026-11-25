@@ -1,0 +1,335 @@
+{% extends 'base.html' %}
+{% block title %}Track Ride #{{ ride.id }} - RideShare{% endblock %}
+
+{% block extra_css %}
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    #map { height: 380px; width: 100%; border-radius: 0.5rem; }
+    .custom-marker-pickup { background-color: #0d6efd; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 6px rgba(0,0,0,0.4); }
+    .custom-marker-dropoff { background-color: #dc3545; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 6px rgba(0,0,0,0.4); }
+    .custom-marker-user { background-color: #198754; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 6px rgba(0,0,0,0.4); }
+    .custom-marker-driver { background-color: #ffc107; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 6px rgba(0,0,0,0.4); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Ride Header -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h3 class="fw-bold mb-1">
+                    Ride Status: <span class="text-warning">{{ ride.get_status_display|default:ride.status|title }}</span>
+                </h3>
+                <p class="text-muted mb-1">
+                    <strong>Driver:</strong> 
+                    {% if ride.driver %}
+                        {{ ride.driver.get_full_name|default:ride.driver.username }}
+                    {% else %}
+                        Looking for a driver...
+                    {% endif %}
+                </p>
+
+                <!-- Booked Passengers List -->
+                <div class="mt-2">
+                    <strong class="small text-secondary">Booked Passengers:</strong>
+                    {% if bookings %}
+                        <div class="d-flex flex-wrap gap-2 mt-1">
+                            {% for booking in bookings %}
+                                <button type="button" class="btn btn-sm btn-outline-dark rounded-pill px-3 py-1 shadow-sm" data-bs-toggle="modal" data-bs-target="#passengerModal-{{ booking.passenger.id }}">
+                                    <i class="bi bi-person-fill me-1"></i> {{ booking.passenger.username }} ({{ booking.seats_booked }} seat{% if booking.seats_booked > 1 %}s{% endif %})
+                                </button>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <span class="small text-muted ms-1">No other passengers booked yet.</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="text-end">
+                <small class="text-muted d-block">Total Fare</small>
+                <h3 class="fw-bold text-dark mb-0">Rs: {{ ride.fare }}</h3>
+                <span class="badge bg-light text-dark border mt-1">Seats: {{ ride.booked_seats }}/{{ ride.total_seats }} Booked</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Grid Row for Details and Map -->
+    <div class="row">
+        <!-- Details Column -->
+        <div class="col-md-5 mb-4">
+            <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100 d-flex flex-column">
+                <h4 class="fw-bold mb-3">Ride Details</h4>
+                <p class="mb-2"><strong>Created By:</strong> {{ ride.passenger.username }}</p>
+                <p class="mb-2"><strong>Created At:</strong> {{ ride.created_at|date:"M d, Y - H:i" }}</p>
+                
+                <hr>
+
+                <p class="mb-2">
+                    <strong class="text-primary">Pickup Location:</strong><br>
+                    <span class="text-muted small">{{ ride.pickup_address }}</span>
+                </p>
+                <p class="mb-3">
+                    <strong class="text-danger">Drop-off Location:</strong><br>
+                    <span class="text-muted small">{{ ride.dropoff_address }}</span>
+                </p>
+
+                <!-- Remaining Seats Badge -->
+                <div class="mb-3">
+                    <span class="badge bg-info text-dark p-2 rounded-3 w-100 fw-semibold">
+                        Available Seats: {{ available_seats }} seats remaining
+                    </span>
+                </div>
+
+                <!-- Driver Actions / Accept Ride Option -->
+                {% if not ride.driver and is_driver %}
+                    <div class="mb-3">
+                        <form method="POST">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="accept">
+                            <button type="submit" class="btn btn-success w-100 fw-bold rounded-pill py-2">
+                                <i class="bi bi-car-front-fill me-1"></i> Accept Ride as Driver
+                            </button>
+                        </form>
+                    </div>
+                {% endif %}
+
+                <!-- Action Controls Section (Pushed to bottom via mt-auto) -->
+                <div class="mt-auto pt-2 d-flex flex-column gap-2">
+                    <!-- Driver Start/End Controls -->
+                    {% if ride.driver == user %}
+                        {% if ride.status == 'accepted' %}
+                            <form method="POST">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="start_ride">
+                                <button type="submit" class="btn btn-primary w-100 fw-bold rounded-pill py-2 shadow-sm">
+                                    <i class="bi bi-play-fill me-1"></i> Start Ride
+                                </button>
+                            </form>
+                        {% elif ride.status == 'ongoing' %}
+                            <form method="POST">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="end_ride">
+                                <button type="submit" class="btn btn-success w-100 fw-bold rounded-pill py-2 shadow-sm">
+                                    <i class="bi bi-check-circle-fill me-1"></i> End Ride
+                                </button>
+                            </form>
+                        {% endif %}
+                    {% endif %}
+
+                    <!-- Passenger Booking Form -->
+                    {% if ride.status == 'requested' or ride.status == 'accepted' %}
+                        {% if not user_has_booked and user != ride.passenger and user != ride.driver %}
+                            {% if available_seats > 0 %}
+                                <form method="POST" class="row g-2">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="join_ride">
+                                    <div class="col-7">
+                                        <input type="number" name="seats_to_book" class="form-control form-control-sm" min="1" max="{{ available_seats }}" value="1" required>
+                                    </div>
+                                    <div class="col-5">
+                                        <button type="submit" class="btn btn-warning btn-sm w-100 fw-bold rounded-pill">Book Seats</button>
+                                    </div>
+                                </form>
+                            {% else %}
+                                <div class="alert alert-secondary text-center py-2 mb-0 small rounded-pill">
+                                    Ride Full (0 Seats Left)
+                                </div>
+                            {% endif %}
+                        {% endif %}
+
+                        <!-- Cancel Passenger Booking Option -->
+                        {% if user_has_booked %}
+                            <div class="d-flex flex-column gap-1">
+                                <div class="badge bg-light text-dark p-2 rounded-3 border">
+                                    Your Fare: <strong>Rs: {{ user_fare }}</strong> ({{ user_booking.seats_booked }} seats)
+                                </div>
+                                <form method="POST" onsubmit="return confirm('Cancel your seat booking?');">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="cancel_booking">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm w-100 fw-bold rounded-pill">
+                                        <i class="bi bi-x-circle me-1"></i> Cancel My Booking
+                                    </button>
+                                </form>
+                            </div>
+                        {% endif %}
+                    {% elif ride.status == 'ongoing' %}
+                        <div class="alert alert-info text-center py-2 mb-0 small rounded-pill fw-semibold">
+                            <i class="bi bi-lock-fill me-1"></i> Ride Ongoing (Bookings Locked)
+                        </div>
+                    {% endif %}
+
+                    <!-- Cancel Ride Option -->
+                    {% if ride.status != 'completed' and ride.status != 'canceled' and user == ride.passenger or ride.driver == user %}
+                        <form method="POST" onsubmit="return confirm('Are you sure you want to cancel this ride?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="cancel_ride">
+                            <button type="submit" class="btn btn-outline-danger w-100 fw-bold rounded-pill py-2 shadow-sm">
+                                <i class="bi bi-x-circle-fill me-1"></i> Cancel Ride
+                            </button>
+                        </form>
+                    {% endif %}
+
+                    <!-- Status Alerts -->
+                    {% if ride.status == 'completed' %}
+                        <div class="alert alert-success text-center py-2 mb-0 fw-semibold rounded-pill small">
+                            <i class="bi bi-check-circle-fill me-1"></i> Ride Completed
+                        </div>
+                    {% elif ride.status == 'canceled' %}
+                        <div class="alert alert-danger text-center py-2 mb-0 fw-semibold rounded-pill small">
+                            <i class="bi bi-x-circle-fill me-1"></i> Ride Canceled
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Route Map Column -->
+        <div class="col-md-7 mb-4">
+            <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
+                <h4 class="fw-bold mb-3">Route Map</h4>
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Get Live Link Button (Only visible for participants when ride is ongoing) -->
+{% if ride.status == 'ongoing' %}
+    {% if user == ride.driver or user == ride.passenger or user_has_booked %}
+        <div class="mb-3">
+            <button type="button" id="copyLiveLinkBtn" class="btn btn-dark w-100 fw-bold rounded-pill py-2 shadow-sm">
+                <i class="bi bi-link-45deg me-1"></i> Get Live Ride Link
+            </button>
+            <small id="copySuccessMsg" class="text-success d-block text-center mt-1 fw-semibold" style="display: none !important;">
+                <i class="bi bi-check-circle me-1"></i> Link copied to clipboard!
+            </small>
+        </div>
+    {% endif %}
+{% endif %}
+<!-- Passenger Info & Messaging Modals -->
+{% for booking in bookings %}
+<div class="modal fade" id="passengerModal-{{ booking.passenger.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg rounded-4 p-4">
+            <div class="modal-header border-0 pb-0">
+                <h4 class="fw-bold mb-0">Passenger Profile</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body py-4">
+                <div class="row g-4 align-items-center">
+                    <div class="col-md-4 text-center border-end">
+                        {% if booking.passenger.profile.profile_picture %}
+                            <img src="{{ booking.passenger.profile.profile_picture.url }}" class="rounded-circle shadow-sm mb-3" style="width: 100px; height: 100px; object-fit: cover;" alt="User">
+                        {% else %}
+                            <div class="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3 shadow-sm" style="width: 100px; height: 100px;">
+                                <i class="bi bi-person fs-1"></i>
+                            </div>
+                        {% endif %}
+                        <h5 class="fw-bold mb-1">{{ booking.passenger.get_full_name|default:booking.passenger.username }}</h5>
+                        <p class="text-muted small mb-0">@{{ booking.passenger.username }}</p>
+                    </div>
+
+                    <div class="col-md-8">
+                        <h6 class="fw-bold text-secondary mb-3">Basic Information</h6>
+                        <p class="mb-2 small"><strong>Email:</strong> {{ booking.passenger.email|default:"Not provided" }}</p>
+                        <p class="mb-2 small"><strong>Phone:</strong> {{ booking.passenger.profile.phone_number|default:"Not provided" }}</p>
+                        <p class="mb-3 small"><strong>Seats Booked:</strong> {{ booking.seats_booked }} seat(s)</p>
+
+                        <hr>
+
+                        <!-- Send Message Form inside Modal -->
+                        <form method="POST" action="{% url 'send_user_message' ride.id booking.passenger.id %}">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label class="form-label small fw-semibold text-secondary">Send Message to {{ booking.passenger.username }}</label>
+                                <textarea name="message_content" class="form-control form-control-sm rounded-3" rows="3" placeholder="Type your message here..." required></textarea>
+                            </div>
+                            <div class="text-end">
+                                <button type="submit" class="btn btn-warning btn-sm fw-bold rounded-pill px-4">
+                                    <i class="bi bi-send-fill me-1"></i> Send Notification
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const copyBtn = document.getElementById('copyLiveLinkBtn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', function() {
+                const currentUrl = window.location.href;
+                navigator.clipboard.writeText(currentUrl).then(() => {
+                    const msg = document.getElementById('copySuccessMsg');
+                    msg.style.display = 'block';
+                    setTimeout(() => {
+                        msg.style.display = 'none';
+                    }, 3000);
+                }).catch(err => {
+                    console.error('Failed to copy: ', err);
+                });
+            });
+        }
+    });
+</script>
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const fullPickup = "{{ ride.pickup_address|escapejs }}";
+        const fullDropoff = "{{ ride.dropoff_address|escapejs }}";
+        
+        let pLat = {{ ride.pickup_lat|default:"30.1575" }};
+        let pLng = {{ ride.pickup_lng|default:"71.5249" }};
+        let dLat = {{ ride.dropoff_lat|default:"30.1650" }};
+        let dLng = {{ ride.dropoff_lng|default:"71.4934" }};
+
+        const driverLat = {% if ride.driver_lat %}{{ ride.driver_lat }}{% else %}null{% endif %};
+        const driverLng = {% if ride.driver_lng %}{{ ride.driver_lng }}{% else %}null{% endif %};
+
+        const map = L.map('map').setView([pLat, pLng], 13);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', {
+            maxZoom: 20,
+            attribution: '&copy; OpenStreetMap France | &copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        const pickupIcon = L.divIcon({ className: 'custom-marker-pickup', iconSize: [16, 16], iconAnchor: [8, 8] });
+        const dropoffIcon = L.divIcon({ className: 'custom-marker-dropoff', iconSize: [16, 16], iconAnchor: [8, 8] });
+        const userIcon = L.divIcon({ className: 'custom-marker-user', iconSize: [16, 16], iconAnchor: [8, 8] });
+        const driverIcon = L.divIcon({ className: 'custom-marker-driver', iconSize: [18, 18], iconAnchor: [9, 9] });
+
+        L.marker([pLat, pLng], { icon: pickupIcon }).addTo(map).bindPopup(`<b>Pickup Location (A):</b><br>${fullPickup}`);
+        L.marker([dLat, dLng], { icon: dropoffIcon }).addTo(map).bindPopup(`<b>Drop-off Location (B):</b><br>${fullDropoff}`);
+
+        if (driverLat && driverLng) {
+            L.marker([driverLat, driverLng], { icon: driverIcon }).addTo(map).bindPopup("<b>Assigned Driver Location</b>");
+        }
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(function (position) {
+                L.marker([position.coords.latitude, position.coords.longitude], { icon: userIcon }).addTo(map).bindPopup("<b>You Are Here</b>");
+            });
+        }
+
+        fetch(`https://router.project-osrm.org/route/v1/driving/${pLng},${pLat};${dLng},${dLat}?overview=full&geometries=geojson`)
+            .then(r => r.json())
+            .then(routeData => {
+                if (routeData.routes && routeData.routes.length > 0) {
+                    const coords = routeData.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+                    const routePolyline = L.polyline(coords, { color: '#0275d8', weight: 5, opacity: 0.85 }).addTo(map);
+                    map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
+                }
+            });
+    });
+</script>
+{% endblock %}

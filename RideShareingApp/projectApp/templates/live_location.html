@@ -1,0 +1,153 @@
+{% extends 'base.html' %}
+{% block title %}Track Live Ride - RideShare{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    #live-map { height: 450px; width: 100%; border-radius: 0.5rem; }
+    .custom-marker-pickup { background-color: #0d6efd; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 6px rgba(0,0,0,0.4); }
+    .custom-marker-dropoff { background-color: #dc3545; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 6px rgba(0,0,0,0.4); }
+    .custom-marker-driver { background-color: #ffc107; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 6px rgba(0,0,0,0.4); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-9">
+            <div class="card border-0 shadow-sm rounded-4 p-4 bg-white">
+                <h3 class="fw-bold mb-3"><i class="bi bi-geo-alt-fill text-warning me-2"></i>Live Ride Tracker</h3>
+                <p class="text-muted small mb-4">Paste the shared ride link below to view the route and driver's live location on the map.</p>
+                
+                <!-- Link Input Form -->
+                <div class="input-group mb-4">
+                    <input type="text" id="rideLinkInput" class="form-control" placeholder="Paste ride link here (e.g., http://127.0.0.1:8000/track-ride/15/)">
+                    <button class="btn btn-warning fw-semibold px-4" type="button" id="loadMapBtn">Load Map</button>
+                </div>
+
+                <!-- Map Container -->
+                <div id="live-map" class="d-none"></div>
+                <div id="mapPlaceholder" class="text-center py-5 text-muted border rounded-3 bg-light">
+                    <i class="bi bi-map fs-1 d-block mb-2 text-secondary"></i>
+                    Please paste a valid ride link above to load live tracking.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    let map = null;
+    let driverMarker = null;
+    let trackingInterval = null;
+    let routePolyline = null;
+    let pickupMarker = null;
+    let dropoffMarker = null;
+
+    document.getElementById('loadMapBtn').addEventListener('click', function() {
+        let linkVal = document.getElementById('rideLinkInput').value.trim();
+        
+        // Remove spaces around slashes or inside words if pasted weirdly
+        linkVal = linkVal.replace(/\s+/g, '-'); 
+
+        // Flexible regex to match /track-ride/15/ or /trackride/15/ or spaces
+        const match = linkVal.match(/track[-]?ride\/(\d+)/i);
+        
+        if (!match) {
+            alert('Invalid ride link format! Please paste a valid track-ride link.');
+            return;
+        }
+
+        const rideId = match[1];
+
+        // Reveal Map Container
+        document.getElementById('mapPlaceholder').classList.add('d-none');
+        document.getElementById('live-map').classList.remove('d-none');
+
+        // Initialize Map if not already created
+        if (!map) {
+            map = L.map('live-map').setView([30.1575, 71.5249], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', {
+                maxZoom: 20,
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+        } else {
+            map.invalidateSize(); // Ensures leaflet renders properly when un-hidden
+        }
+
+        // Clear previous markers if switching links
+        if (trackingInterval) clearInterval(trackingInterval);
+        if (routePolyline) map.removeLayer(routePolyline);
+        if (pickupMarker) map.removeLayer(pickupMarker);
+        if (dropoffMarker) map.removeLayer(dropoffMarker);
+        if (driverMarker) map.removeLayer(driverMarker);
+        driverMarker = null;
+
+        const pickupIcon = L.divIcon({ className: 'custom-marker-pickup', iconSize: [16, 16], iconAnchor: [8, 8] });
+        const dropoffIcon = L.divIcon({ className: 'custom-marker-dropoff', iconSize: [16, 16], iconAnchor: [8, 8] });
+        const driverIcon = L.divIcon({ className: 'custom-marker-driver', iconSize: [22, 22], iconAnchor: [11, 11] });
+
+        // Fetch ride details
+        fetch(`/api/get-driver-location/${rideId}/`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.pickup_lat || !data.pickup_lng) {
+                    alert("Could not load ride coordinates. Make sure the ride ID is correct!");
+                    return;
+                }
+
+                const pLat = data.pickup_lat;
+                const pLng = data.pickup_lng;
+                const dLat = data.dropoff_lat;
+                const dLng = data.dropoff_lng;
+
+                // Add Markers
+                if (pLat && pLng) {
+                    pickupMarker = L.marker([pLat, pLng], { icon: pickupIcon }).addTo(map).bindPopup("<b>Pickup Location</b>");
+                }
+                if (dLat && dLng) {
+                    dropoffMarker = L.marker([dLat, dLng], { icon: dropoffIcon }).addTo(map).bindPopup("<b>Drop-off Location</b>");
+                }
+
+                // Fetch OSRM Route Line
+                if (pLat && pLng && dLat && dLng) {
+                    fetch(`https://router.project-osrm.org/route/v1/driving/${pLng},${pLat};${dLng},${dLat}?overview=full&geometries=geojson`)
+                        .then(r => r.json())
+                        .then(routeData => {
+                            if (routeData.routes && routeData.routes.length > 0) {
+                                const coords = routeData.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+                                routePolyline = L.polyline(coords, { color: '#0275d8', weight: 5, opacity: 0.85 }).addTo(map);
+                                map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
+                            }
+                        });
+                }
+
+                updateDriverMarker(data.driver_lat, data.driver_lng);
+            })
+            .catch(err => console.error("Error loading ride data:", err));
+
+        function updateDriverMarker(lat, lng) {
+            if (lat && lng) {
+                const latLng = [lat, lng];
+                if (driverMarker) {
+                    driverMarker.setLatLng(latLng);
+                } else {
+                    driverMarker = L.marker(latLng, { icon: driverIcon }).addTo(map).bindPopup("<b>Live Driver Location</b>");
+                }
+            }
+        }
+
+        // Poll live location every 4 seconds
+        trackingInterval = setInterval(() => {
+            fetch(`/api/get-driver-location/${rideId}/`)
+                .then(res => res.json())
+                .then(data => {
+                    updateDriverMarker(data.driver_lat, data.driver_lng);
+                });
+        }, 4000);
+    });
+</script>
+{% endblock %}
